@@ -1,0 +1,20 @@
+{
+  "figures": {
+    "centered_sequence_frequency": "outputs/visualizations/dnabert2_full_baseline/centered_sequence_frequency.png",
+    "confusion_matrix": "outputs/visualizations/dnabert2_full_baseline/confusion_matrix.png",
+    "pr": "outputs/visualizations/dnabert2_full_baseline/pr_curve.png",
+    "roc": "outputs/visualizations/dnabert2_full_baseline/roc_curve.png",
+    "splice_probability_distribution": "outputs/visualizations/dnabert2_full_baseline/splice_probability_distribution.png",
+    "training_curves": "outputs/visualizations/dnabert2_full_baseline/training_curves.png"
+  },
+  "metrics": "outputs/visualizations/dnabert2_full_baseline/metrics_from_predictions.json",
+  "outdir": "outputs/visualizations/dnabert2_full_baseline",
+  "predictions": "outputs/dnabert2_full/test_predictions.parquet",
+  "tables": {
+    "motif_fp_csv": "outputs/visualizations/dnabert2_full_baseline/motif_hard_false_positives_top100.csv",
+    "motif_fp_md": "outputs/visualizations/dnabert2_full_baseline/motif_hard_false_positives_top20.md",
+    "negative_summary_csv": "outputs/visualizations/dnabert2_full_baseline/negative_type_summary.csv",
+    "negative_summary_md": "outputs/visualizations/dnabert2_full_baseline/negative_type_summary.md"
+  },
+  "title": "dnabert2_full_baseline"
+}

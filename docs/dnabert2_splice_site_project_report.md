@@ -24,6 +24,8 @@
 
 全量实验共构建 1,414,738 条样本，其中 `non_splice` 707,369 条、`donor` 351,969 条、`acceptor` 355,400 条。最终 DNABERT2 模型在测试集上达到 accuracy 0.966906、macro-F1 0.966328。三个类别的一对多 AUROC 均超过 0.994，AUPRC 均超过 0.993。按负样本类型分析，`motif_hard` 是当前最难负样本类型，其 accuracy 为 0.938709，说明模型在中心附近存在 GT/AG motif 的非注释位点上仍会发生更多混淆。
 
+本轮扩展首先补充了对已有 full fine-tuning baseline 的可视化分析。可视化结果统一保存在 `outputs/visualizations/dnabert2_full_baseline/`，并嵌入到训练曲线、ROC/PR、混淆矩阵、负样本错误分析和中心序列模式等相关章节中。
+
 ## 1. 任务定义
 
 ### 1.1 生物学背景
@@ -668,6 +670,10 @@ outputs/dnabert2_full/
 | train steps/second | 3.601 |
 | train loss | 0.138921 |
 
+训练曲线显示，模型在前 2,000 step 已经快速达到较高验证集 macro-F1，随后继续稳步提升，最佳验证集 macro-F1 出现在 step 26,000。对应可视化文件为 [`training_curves.png`](../outputs/visualizations/dnabert2_full_baseline/training_curves.png)。
+
+![DNABERT2 full fine-tuning training curves](../outputs/visualizations/dnabert2_full_baseline/training_curves.png)
+
 ### 7.2 验证集结果
 
 | 指标 | 数值 |
@@ -703,6 +709,12 @@ outputs/dnabert2_full/
 | test AUPRC donor | 0.993215 |
 | test AUPRC acceptor | 0.993107 |
 
+ROC 与 PR 曲线进一步说明，三个类别在阈值无关指标上均表现稳定。`donor` 与 `acceptor` 的 ROC 曲线几乎贴近左上角，PR 曲线也保持在高 precision 区间；`non_splice` 虽然占比更高，但在困难负样本干扰下仍维持 0.994 以上 AUROC。
+
+![DNABERT2 full baseline ROC curves](../outputs/visualizations/dnabert2_full_baseline/roc_curve.png)
+
+![DNABERT2 full baseline PR curves](../outputs/visualizations/dnabert2_full_baseline/pr_curve.png)
+
 ### 7.4 测试集 per-class 指标
 
 | 类别 | support | precision | recall | F1 |
@@ -722,6 +734,8 @@ outputs/dnabert2_full/
 | non_splice | 68,024 | 1,408 | 1,305 |
 | donor | 824 | 34,261 | 112 |
 | acceptor | 861 | 172 | 34,507 |
+
+![DNABERT2 full baseline confusion matrix](../outputs/visualizations/dnabert2_full_baseline/confusion_matrix.png)
 
 主要错误类型：
 
@@ -754,6 +768,34 @@ outputs/dnabert2_full/
 | random_genome | 0.041681 |
 
 `motif_hard` 的平均 splice-site probability 最高，进一步说明中心 motif 对模型预测仍有影响，但模型整体仍能正确识别 93.87% 的 motif_hard 负样本。
+
+从概率分布看，donor/acceptor 正样本的 splice-site probability 明显集中在高分区间，而三类负样本大多集中在低分区间。`motif_hard` 的右尾更长，说明少量带 GT/AG motif 的非注释位点会被模型赋予接近真实剪接位点的概率。
+
+![DNABERT2 full baseline splice probability distributions](../outputs/visualizations/dnabert2_full_baseline/splice_probability_distribution.png)
+
+可视化脚本额外输出了更直接的负样本误报率表，文件见 [`negative_type_summary.csv`](../outputs/visualizations/dnabert2_full_baseline/negative_type_summary.csv) 与 [`negative_type_summary.md`](../outputs/visualizations/dnabert2_full_baseline/negative_type_summary.md)。
+
+| negative_type | n | accuracy | false_positive_rate | donor_fp | acceptor_fp | mean_splice_site_probability | median_splice_site_probability | max_splice_site_probability |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| motif_hard | 23,576 | 0.938709 | 0.061291 | 766 | 679 | 0.078179 | 0.004315 | 0.999842 |
+| random_genome | 23,584 | 0.970700 | 0.029300 | 326 | 365 | 0.041681 | 0.001874 | 0.999803 |
+| intronic | 23,577 | 0.975527 | 0.024473 | 316 | 261 | 0.038321 | 0.002500 | 0.999704 |
+
+高置信度 `motif_hard` 假阳性案例集中表现出接近 canonical acceptor/donor 的局部序列。Top 100 案例保存为 [`motif_hard_false_positives_top100.csv`](../outputs/visualizations/dnabert2_full_baseline/motif_hard_false_positives_top100.csv)，Top 20 Markdown 表保存为 [`motif_hard_false_positives_top20.md`](../outputs/visualizations/dnabert2_full_baseline/motif_hard_false_positives_top20.md)。下表展示前 5 个案例，`sequence` 列只截取中心附近 41 bp：
+
+| chrom | pos | strand | pred_label | splice_site_probability | center sequence |
+|---|---:|---|---:|---:|---|
+| GL000256.2 | 1,560,068 | + | 2 | 0.999842 | `CCTCCCTCTCCTTTCCCAGAGCCGTCTTCTCAGCCCACCAT` |
+| chr11 | 121,513,788 | - | 2 | 0.999806 | `TTCCCTTTATTTTTCCTAAGGTGACCAAAGGAAAGCAGAAT` |
+| chr8 | 46,029,737 | + | 1 | 0.999783 | `GTGACCGCAATACCCAAACCGTGAGTCGAAGTCTTCTCGAG` |
+| chr1 | 26,816,453 | - | 2 | 0.999758 | `ACTTCTTTGTTACGTGCTAGGTCAAGATAATCAAGGTCTCT` |
+| chr2 | 212,996,464 | - | 2 | 0.999755 | `CCTTATGTTGTCTATCCTTAGGAATGAGACATGTACTACCA` |
+
+### 7.7 中心序列模式可视化
+
+为了检查模型是否至少学到了合理的剪接位点局部模式，项目对测试集按真实类别抽样并统计中心上下游 20 bp 的 A/C/G/T 频率。图中 donor 在中心附近呈现明显 `GT` 倾向，acceptor 在中心附近呈现 `AG` 与上游富 T/C 的模式；`non_splice` 的中心模式更分散。这与剪接位点的经典生物学信号一致，也解释了为什么 `motif_hard` 会成为最难负样本：它们局部 motif 像正样本，但缺少完整上下文支持。
+
+![Centered nucleotide frequency patterns](../outputs/visualizations/dnabert2_full_baseline/centered_sequence_frequency.png)
 
 ## 8. baseline 与 smoke test
 
