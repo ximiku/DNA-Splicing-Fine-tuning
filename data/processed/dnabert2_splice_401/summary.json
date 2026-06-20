@@ -1,0 +1,49 @@
+{
+  "dataset_dir": "data/processed/dnabert2_splice_401",
+  "label_counts": {
+    "acceptor": 355400,
+    "donor": 351969,
+    "non_splice": 707369
+  },
+  "n_introns": 2245461,
+  "n_positive_sites_before_window_filter": 707378,
+  "n_records_total": 1414738,
+  "n_transcripts": 280000,
+  "negative_quotas": {
+    "intronic": 235766,
+    "motif_hard": 235766,
+    "random_genome": 235837
+  },
+  "negative_type_counts": {
+    "intronic": 235766,
+    "motif_hard": 235766,
+    "random_genome": 235837
+  },
+  "positive_window_filter_counts": {
+    "contains_N": 9,
+    "kept": 707369
+  },
+  "split_label_counts": {
+    "test": {
+      "acceptor": 35540,
+      "donor": 35197,
+      "non_splice": 70737
+    },
+    "train": {
+      "acceptor": 284320,
+      "donor": 281575,
+      "non_splice": 565895
+    },
+    "valid": {
+      "acceptor": 35540,
+      "donor": 35197,
+      "non_splice": 70737
+    }
+  },
+  "split_sizes": {
+    "test": 141474,
+    "train": 1131790,
+    "valid": 141474
+  },
+  "window_size": 401
+}

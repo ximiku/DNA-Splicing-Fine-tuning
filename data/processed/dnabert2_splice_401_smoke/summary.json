@@ -1,0 +1,48 @@
+{
+  "dataset_dir": "data/processed/dnabert2_splice_401_smoke",
+  "label_counts": {
+    "acceptor": 302,
+    "donor": 297,
+    "non_splice": 599
+  },
+  "n_introns": 1701,
+  "n_positive_sites_before_window_filter": 599,
+  "n_records_total": 1198,
+  "n_transcripts": 250,
+  "negative_quotas": {
+    "intronic": 199,
+    "motif_hard": 200,
+    "random_genome": 200
+  },
+  "negative_type_counts": {
+    "intronic": 199,
+    "motif_hard": 200,
+    "random_genome": 200
+  },
+  "positive_window_filter_counts": {
+    "kept": 599
+  },
+  "split_label_counts": {
+    "test": {
+      "acceptor": 61,
+      "donor": 59,
+      "non_splice": 120
+    },
+    "train": {
+      "acceptor": 181,
+      "donor": 178,
+      "non_splice": 359
+    },
+    "valid": {
+      "acceptor": 60,
+      "donor": 60,
+      "non_splice": 120
+    }
+  },
+  "split_sizes": {
+    "test": 240,
+    "train": 718,
+    "valid": 240
+  },
+  "window_size": 401
+}

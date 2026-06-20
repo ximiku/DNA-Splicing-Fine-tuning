@@ -1,0 +1,31 @@
+seed: 42
+window_size: 401
+
+raw:
+  fasta: data/raw/GRCh38.p14.genome.fa
+  gtf: data/raw/gencode.v49.basic.annotation.gtf
+
+output:
+  dataset_dir: data/processed/dnabert2_splice_401
+
+limits:
+  max_transcripts:
+  max_gtf_lines:
+
+negatives:
+  negative_to_positive_ratio: 1.0
+  type_fractions:
+    random_genome: 0.3334
+    motif_hard: 0.3333
+    intronic: 0.3333
+  min_distance_to_splice: 200
+  intronic_margin: 200
+
+split:
+  valid_size: 0.1
+  test_size: 0.1
+  stratify_column: stratify_key
+
+logging:
+  level: INFO
+

@@ -1,0 +1,64 @@
+{
+  "best_global_step": 1,
+  "best_metric": 0.25641025641025644,
+  "best_model_checkpoint": "outputs/dnabert2_smoke/checkpoints/checkpoint-1",
+  "epoch": 0.5,
+  "eval_steps": 1,
+  "global_step": 1,
+  "is_hyper_param_search": false,
+  "is_local_process_zero": true,
+  "is_world_process_zero": true,
+  "log_history": [
+    {
+      "epoch": 0.5,
+      "grad_norm": 3.8450927734375,
+      "learning_rate": 2e-05,
+      "loss": 1.1556,
+      "step": 1
+    },
+    {
+      "epoch": 0.5,
+      "eval_accuracy": 0.625,
+      "eval_auprc_acceptor": 0.8555555555555556,
+      "eval_auprc_donor": 0.3333333333333333,
+      "eval_auroc_acceptor": 0.5833333333333334,
+      "eval_auroc_donor": 0.5,
+      "eval_f1_acceptor": 0.7692307692307693,
+      "eval_f1_donor": 0.0,
+      "eval_f1_non_splice": 0.0,
+      "eval_loss": 1.0730589628219604,
+      "eval_macro_f1": 0.25641025641025644,
+      "eval_precision_acceptor": 0.7142857142857143,
+      "eval_precision_donor": 0.0,
+      "eval_precision_non_splice": 0.0,
+      "eval_recall_acceptor": 0.8333333333333334,
+      "eval_recall_donor": 0.0,
+      "eval_recall_non_splice": 0.0,
+      "eval_runtime": 0.0856,
+      "eval_samples_per_second": 93.478,
+      "eval_steps_per_second": 23.37,
+      "step": 1
+    }
+  ],
+  "logging_steps": 1,
+  "max_steps": 2,
+  "num_input_tokens_seen": 0,
+  "num_train_epochs": 1,
+  "save_steps": 1,
+  "stateful_callbacks": {
+    "TrainerControl": {
+      "args": {
+        "should_epoch_stop": false,
+        "should_evaluate": false,
+        "should_log": false,
+        "should_save": true,
+        "should_training_stop": false
+      },
+      "attributes": {}
+    }
+  },
+  "total_flos": 1399893037056.0,
+  "train_batch_size": 4,
+  "trial_name": null,
+  "trial_params": null
+}

@@ -1,0 +1,19 @@
+seed: 42
+
+data:
+  dataset_dir: data/processed/dnabert2_splice_401_smoke
+
+baseline:
+  ngram_range: [3, 6]
+  max_features: 200000
+  max_iter: 1000
+  class_weight: balanced
+
+smoke:
+  max_examples_per_split:
+
+output:
+  output_dir: outputs/baseline_smoke
+
+logging:
+  level: INFO

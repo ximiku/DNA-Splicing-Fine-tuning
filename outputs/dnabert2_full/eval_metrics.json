@@ -1,0 +1,192 @@
+{
+  "negative_type": {
+    "intronic": {
+      "accuracy": 0.9755269966492769,
+      "auprc_acceptor": null,
+      "auprc_donor": null,
+      "auprc_non_splice": null,
+      "auroc_acceptor": null,
+      "auroc_donor": null,
+      "auroc_non_splice": null,
+      "confusion_matrix": [
+        [
+          23000,
+          316,
+          261
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "macro_f1": 0.3292039704861484,
+      "per_class": {
+        "acceptor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "donor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "non_splice": {
+          "f1": 0.9876119114584452,
+          "precision": 1.0,
+          "recall": 0.9755269966492769,
+          "support": 23577
+        }
+      }
+    },
+    "motif_hard": {
+      "accuracy": 0.9387088564642009,
+      "auprc_acceptor": null,
+      "auprc_donor": null,
+      "auprc_non_splice": null,
+      "auroc_acceptor": null,
+      "auroc_donor": null,
+      "auroc_non_splice": null,
+      "confusion_matrix": [
+        [
+          22131,
+          766,
+          679
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "macro_f1": 0.3227951954842803,
+      "per_class": {
+        "acceptor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "donor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "non_splice": {
+          "f1": 0.9683855864528409,
+          "precision": 1.0,
+          "recall": 0.9387088564642009,
+          "support": 23576
+        }
+      }
+    },
+    "random_genome": {
+      "accuracy": 0.9707004748982361,
+      "auprc_acceptor": null,
+      "auprc_donor": null,
+      "auprc_non_splice": null,
+      "auroc_acceptor": null,
+      "auroc_donor": null,
+      "auroc_non_splice": null,
+      "confusion_matrix": [
+        [
+          22893,
+          326,
+          365
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "macro_f1": 0.32837747703165004,
+      "per_class": {
+        "acceptor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "donor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "non_splice": {
+          "f1": 0.9851324310949502,
+          "precision": 1.0,
+          "recall": 0.9707004748982361,
+          "support": 23584
+        }
+      }
+    }
+  },
+  "overall": {
+    "accuracy": 0.9669055798238546,
+    "auprc_acceptor": 0.993106792369987,
+    "auprc_donor": 0.9932146212176567,
+    "auprc_non_splice": 0.9943009412417239,
+    "auroc_acceptor": 0.9971112704740007,
+    "auroc_donor": 0.9972104449990541,
+    "auroc_non_splice": 0.994665523231707,
+    "confusion_matrix": [
+      [
+        68024,
+        1408,
+        1305
+      ],
+      [
+        824,
+        34261,
+        112
+      ],
+      [
+        861,
+        172,
+        34507
+      ]
+    ],
+    "macro_f1": 0.966328271333548,
+    "per_class": {
+      "acceptor": {
+        "f1": 0.9657170043658345,
+        "precision": 0.9605556174145418,
+        "recall": 0.9709341586944288,
+        "support": 35540
+      },
+      "donor": {
+        "f1": 0.9645823362144205,
+        "precision": 0.9559164085823498,
+        "recall": 0.9734068244452653,
+        "support": 35197
+      },
+      "non_splice": {
+        "f1": 0.9686854734203894,
+        "precision": 0.9758280853261415,
+        "recall": 0.9616466629910796,
+        "support": 70737
+      }
+    }
+  }
+}

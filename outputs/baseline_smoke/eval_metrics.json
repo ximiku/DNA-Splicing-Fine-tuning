@@ -1,0 +1,192 @@
+{
+  "negative_type": {
+    "intronic": {
+      "accuracy": 0.75,
+      "auprc_acceptor": null,
+      "auprc_donor": null,
+      "auprc_non_splice": null,
+      "auroc_acceptor": null,
+      "auroc_donor": null,
+      "auroc_non_splice": null,
+      "confusion_matrix": [
+        [
+          30,
+          0,
+          10
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "macro_f1": 0.2857142857142857,
+      "per_class": {
+        "acceptor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "donor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "non_splice": {
+          "f1": 0.8571428571428571,
+          "precision": 1.0,
+          "recall": 0.75,
+          "support": 40
+        }
+      }
+    },
+    "motif_hard": {
+      "accuracy": 0.8,
+      "auprc_acceptor": null,
+      "auprc_donor": null,
+      "auprc_non_splice": null,
+      "auroc_acceptor": null,
+      "auroc_donor": null,
+      "auroc_non_splice": null,
+      "confusion_matrix": [
+        [
+          32,
+          2,
+          6
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "macro_f1": 0.2962962962962963,
+      "per_class": {
+        "acceptor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "donor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "non_splice": {
+          "f1": 0.8888888888888888,
+          "precision": 1.0,
+          "recall": 0.8,
+          "support": 40
+        }
+      }
+    },
+    "random_genome": {
+      "accuracy": 0.875,
+      "auprc_acceptor": null,
+      "auprc_donor": null,
+      "auprc_non_splice": null,
+      "auroc_acceptor": null,
+      "auroc_donor": null,
+      "auroc_non_splice": null,
+      "confusion_matrix": [
+        [
+          35,
+          0,
+          5
+        ],
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ],
+      "macro_f1": 0.3111111111111111,
+      "per_class": {
+        "acceptor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "donor": {
+          "f1": 0.0,
+          "precision": 0.0,
+          "recall": 0.0,
+          "support": 0
+        },
+        "non_splice": {
+          "f1": 0.9333333333333333,
+          "precision": 1.0,
+          "recall": 0.875,
+          "support": 40
+        }
+      }
+    }
+  },
+  "overall": {
+    "accuracy": 0.625,
+    "auprc_acceptor": 0.42367015129019636,
+    "auprc_donor": 0.38256300402580584,
+    "auprc_non_splice": 0.8666132652899878,
+    "auroc_acceptor": 0.7026284458283726,
+    "auroc_donor": 0.7056840528139339,
+    "auroc_non_splice": 0.8676388888888888,
+    "confusion_matrix": [
+      [
+        97,
+        2,
+        21
+      ],
+      [
+        13,
+        25,
+        21
+      ],
+      [
+        11,
+        22,
+        28
+      ]
+    ],
+    "macro_f1": 0.5651410440351768,
+    "per_class": {
+      "acceptor": {
+        "f1": 0.42748091603053434,
+        "precision": 0.4,
+        "recall": 0.45901639344262296,
+        "support": 61
+      },
+      "donor": {
+        "f1": 0.46296296296296297,
+        "precision": 0.5102040816326531,
+        "recall": 0.423728813559322,
+        "support": 59
+      },
+      "non_splice": {
+        "f1": 0.8049792531120332,
+        "precision": 0.8016528925619835,
+        "recall": 0.8083333333333333,
+        "support": 120
+      }
+    }
+  }
+}
