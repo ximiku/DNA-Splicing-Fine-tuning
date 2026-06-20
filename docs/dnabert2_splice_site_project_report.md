@@ -28,6 +28,8 @@
 
 随后新增 chromosome-held-out full fine-tuning 实验：valid 完全使用 `chr8`，test 完全使用 `chr9` 与 `chr10`，其余染色体和 GRCh38 alternate/unplaced contigs 用于 train。split 审计显示 train/valid/test 之间无染色体重叠。该严格切分实验在 held-out test 上达到 accuracy 0.967469、macro-F1 0.966799，未观察到相对随机分层 baseline 的性能下降。对应指标和可视化保存在 `outputs/dnabert2_chrom_holdout_full/` 与 `outputs/visualizations/dnabert2_chrom_holdout_full/`。
 
+负样本消融实验进一步构建了 random-only 训练集：负样本只保留 `random_genome`，negative:positive ratio 仍为 1.0。该模型在自身 random-only test 上达到 macro-F1 0.972705，但在原始 full test 上为 0.966504，并且 `motif_hard` false-positive rate 从 full baseline 的 0.061291 升至 0.071004。结果说明只用随机负样本会高估模型表现，困难负样本对控制 GT/AG motif 附近假阳性具有实际价值。对应输出保存在 `outputs/dnabert2_ablation_random_only/` 与 `outputs/visualizations/dnabert2_ablation_random_only/`。
+
 ## 1. 任务定义
 
 ### 1.1 生物学背景
@@ -391,6 +393,16 @@ near_known_site(chrom, pos, known_index, min_distance)
 
 这样划分不仅保持三分类 label 比例，也尽量保持三类负样本比例。
 
+负样本消融实验沿用随机分层划分，但通过配置中的 `negatives.enabled_types` 只启用 `random_genome`：
+
+```yaml
+negatives:
+  negative_to_positive_ratio: 1.0
+  enabled_types: [random_genome]
+```
+
+这样可以把“正样本构建、窗口长度、训练超参数”保持不变，只改变训练时看到的负样本难度。random-only 数据集自身的 train/valid/test 都只包含随机背景负样本；为了衡量它对困难负样本的真实泛化能力，训练后额外用原始 full test 重新推理并生成 `full_test_metrics.json` 与 `full_test_predictions.parquet`。
+
 扩展实验增加了第二种划分策略 `chromosome_holdout`，配置文件为 `configs/dataset_chrom_holdout.yaml`：
 
 ```yaml
@@ -678,7 +690,7 @@ outputs/dnabert2_full/test_predictions.parquet
 
 ### 7.1 训练运行概况
 
-本节先给出随机分层 full fine-tuning baseline，再给出 chromosome-held-out full fine-tuning 扩展实验。两者均使用 DNABERT2 full fine-tuning、401 bp 输入窗口和相同训练超参数；差异只在数据 split。
+本节先给出随机分层 full fine-tuning baseline，再给出 chromosome-held-out full fine-tuning 和 random-only 负样本消融。三组均使用 DNABERT2 full fine-tuning、401 bp 输入窗口和相同训练超参数；差异分别来自数据 split 与训练负样本构成。
 
 训练输出目录：
 
@@ -893,6 +905,66 @@ splice-site probability 分布和中心序列频率图如下。前者显示 `mot
 
 ![DNABERT2 chromosome holdout centered nucleotide frequency patterns](../outputs/visualizations/dnabert2_chrom_holdout_full/centered_sequence_frequency.png)
 
+### 7.9 random-only 负样本消融结果
+
+random-only 消融实验输出目录：
+
+```text
+outputs/dnabert2_ablation_random_only/
+```
+
+该实验重新构建全量数据集，但负样本只启用 `random_genome`，并保持 negative:positive ratio 为 1.0。数据集规模仍为 1,414,738 条，其中 `non_splice` 707,369 条、`donor` 351,969 条、`acceptor` 355,400 条；区别是所有负样本均为随机基因组背景。训练完成后最佳验证 checkpoint 为 `checkpoint-26000`，训练 runtime 为 7,345.236 秒，最终模型目录大小约 448 MiB。
+
+在 random-only 自身 test 上，模型得到较高指标：
+
+| test set | accuracy | macro-F1 | AUROC non_splice | AUROC donor | AUROC acceptor | AUPRC non_splice | AUPRC donor | AUPRC acceptor |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| random-only test | 0.973352 | 0.972705 | 0.996450 | 0.998049 | 0.997910 | 0.996247 | 0.995211 | 0.995052 |
+| original full test | 0.967033 | 0.966504 | 0.994975 | 0.997355 | 0.997293 | 0.994583 | 0.993481 | 0.993607 |
+
+这个差异是消融实验的核心结论：如果测试集也只包含随机负样本，模型表现会被明显高估；当同一个模型放回包含 `motif_hard` 与 `intronic` 的原始 full test，macro-F1 回到与 full baseline 接近的区间。
+
+通用 full test 上的训练曲线、ROC 与 PR 曲线如下：
+
+![DNABERT2 random-only ablation training curves](../outputs/visualizations/dnabert2_ablation_random_only/training_curves.png)
+
+![DNABERT2 random-only ablation ROC curves on full test](../outputs/visualizations/dnabert2_ablation_random_only/roc_curve.png)
+
+![DNABERT2 random-only ablation PR curves on full test](../outputs/visualizations/dnabert2_ablation_random_only/pr_curve.png)
+
+与 full baseline 在同一个原始 full test 上对比：
+
+| 实验 | 训练负样本 | 测试集 | accuracy | macro-F1 | motif_hard FPR | intronic FPR | random_genome FPR |
+|---|---|---|---:|---:|---:|---:|---:|
+| full baseline | random + motif_hard + intronic | original full test | 0.966906 | 0.966328 | 0.061291 | 0.024473 | 0.029300 |
+| random-only ablation | random only | original full test | 0.967033 | 0.966504 | 0.071004 | 0.032404 | 0.020989 |
+
+整体 accuracy 与 macro-F1 变化很小，但错误结构发生了可解释变化：random-only 模型在 `random_genome` 上 false-positive rate 更低，从 2.93% 降到 2.10%；但对未见过的困难负样本更不稳，`motif_hard` FPR 从 6.13% 升到 7.10%，`intronic` FPR 从 2.45% 升到 3.24%。这说明困难负样本并不一定显著提高 overall macro-F1，却能改善更贴近真实误报风险的负样本切片。
+
+通用 full test 的混淆矩阵为：
+
+| true \ pred | non_splice | donor | acceptor |
+|---|---:|---:|---:|
+| non_splice | 67,804 | 1,543 | 1,390 |
+| donor | 698 | 34,375 | 124 |
+| acceptor | 753 | 156 | 34,631 |
+
+![DNABERT2 random-only ablation confusion matrix on full test](../outputs/visualizations/dnabert2_ablation_random_only/confusion_matrix.png)
+
+按负样本类型的详细结果如下，完整表见 [`negative_type_summary.csv`](../outputs/visualizations/dnabert2_ablation_random_only/negative_type_summary.csv)，高置信度 `motif_hard` 假阳性案例见 [`motif_hard_false_positives_top100.csv`](../outputs/visualizations/dnabert2_ablation_random_only/motif_hard_false_positives_top100.csv) 与 [`motif_hard_false_positives_top20.md`](../outputs/visualizations/dnabert2_ablation_random_only/motif_hard_false_positives_top20.md)。
+
+| negative_type | n | accuracy | false_positive_rate | donor_fp | acceptor_fp | mean_splice_site_probability |
+|---|---:|---:|---:|---:|---:|---:|
+| motif_hard | 23,576 | 0.928996 | 0.071004 | 888 | 786 | 0.089953 |
+| intronic | 23,577 | 0.967596 | 0.032404 | 421 | 343 | 0.046039 |
+| random_genome | 23,584 | 0.979011 | 0.020989 | 234 | 261 | 0.032983 |
+
+splice-site probability 分布显示，random-only 模型将更多 `motif_hard` 样本推入高分右尾；中心序列频率图仍显示 donor/acceptor 的 canonical motif 信号，说明性能变化主要来自负样本覆盖不足，而不是模型无法学习正样本模式。
+
+![DNABERT2 random-only ablation splice probability distributions](../outputs/visualizations/dnabert2_ablation_random_only/splice_probability_distribution.png)
+
+![DNABERT2 random-only ablation centered nucleotide frequency patterns](../outputs/visualizations/dnabert2_ablation_random_only/centered_sequence_frequency.png)
+
 ## 8. baseline 与 smoke test
 
 ### 8.1 baseline 设计
@@ -1041,10 +1113,11 @@ src/
 | `src/metrics_utils.py` | accuracy、macro-F1、per-class 指标、confusion matrix、AUROC、AUPRC |
 | `src/evaluate.py` | 从 prediction parquet/csv/jsonl 统一计算 overall 与 negative_type 分组指标 |
 | `src/predict.py` | 给定 FASTA、chrom、pos、strand 和模型目录，进行单点推理 |
+| `src/predict_dataset.py` | 使用已训练模型对任意 parquet/jsonl/csv 数据集批量推理，并可直接输出指标 |
 | `src/baselines.py` | char k-mer TF-IDF + logistic regression baseline |
 | `src/model_utils.py` | DNABERT2 remote code 兼容处理，禁用不兼容 flash attention，保存 remote model code |
 | `src/config_utils.py` | YAML 读取、随机种子、日志、JSON 写入、目录创建 |
-| `src/visualize.ipynb` | 后续可视化接口 stub |
+| `src/visualize.py` | ROC/PR、混淆矩阵、训练曲线、概率分布、中心序列频率和 motif-hard 假阳性案例可视化 |
 
 ### 9.3 数据构建主流程伪代码
 
@@ -1309,7 +1382,45 @@ python -m src.visualize \
   --title dnabert2_chrom_holdout_full
 ```
 
-### 10.9 统一评估
+### 10.9 构建与训练 random-only 负样本消融实验
+
+random-only 数据集从 raw FASTA/GTF 重新构建，只启用 `random_genome` 负样本：
+
+```bash
+python -m src.build_splice_dataset \
+  --config configs/dataset_random_only.yaml
+```
+
+训练命令：
+
+```bash
+torchrun --nproc_per_node=2 -m src.train_dnabert2 \
+  --config configs/dnabert2_ablation_random_only.yaml
+```
+
+该训练会输出 random-only 自身 test 的 `test_metrics.json` 与 `test_predictions.parquet`。为了检验困难负样本泛化能力，再用训练好的模型对原始 full test 推理：
+
+```bash
+python -m src.predict_dataset \
+  --model_dir outputs/dnabert2_ablation_random_only/final_model \
+  --input data/processed/dnabert2_splice_401/test.parquet \
+  --output outputs/dnabert2_ablation_random_only/full_test_predictions.parquet \
+  --metrics_output outputs/dnabert2_ablation_random_only/full_test_metrics.json \
+  --batch_size 256 \
+  --max_length 512
+```
+
+可视化命令使用原始 full test 的预测文件：
+
+```bash
+python -m src.visualize \
+  --predictions outputs/dnabert2_ablation_random_only/full_test_predictions.parquet \
+  --trainer_state outputs/dnabert2_ablation_random_only/checkpoints/trainer_state.json \
+  --output_dir outputs/visualizations/dnabert2_ablation_random_only \
+  --title dnabert2_ablation_random_only_common_full_test
+```
+
+### 10.10 统一评估
 
 ```bash
 python -m src.evaluate \
@@ -1319,7 +1430,7 @@ python -m src.evaluate \
 
 该命令会输出 overall metrics 和按 `negative_type` 分组的负样本指标。
 
-### 10.10 单点预测
+### 10.11 单点预测
 
 ```bash
 python -m src.predict \
@@ -1376,6 +1487,8 @@ python -m src.predict \
 
 如果只使用随机背景负样本，模型可能学到非常简单的规则。例如，中心是否有 GT/AG、是否位于基因附近、GC content 是否异常等。引入 `motif_hard` 和 `intronic` 可以提高任务难度，使模型必须学习更细致的上下文模式。
 
+random-only 消融验证了这一判断。只用 `random_genome` 训练时，模型在随机负样本测试集上表现更高，但放回包含困难负样本的原始 full test 后，`motif_hard` false-positive rate 从 full baseline 的 6.13% 升至 7.10%。因此困难负样本不是单纯增加数据多样性，而是在约束模型不要把局部 GT/AG motif 直接当作剪接位点。
+
 ### 11.5 为什么使用随机分层划分
 
 首版目标是完成可运行的全基因组三分类 DNABERT2 项目。随机分层划分的优点是：
@@ -1420,16 +1533,16 @@ python -m src.predict \
 
 这些实验可以帮助分析 full fine-tuning 的收益与成本。
 
-### 12.7 没有执行系统性负样本消融
+### 12.7 负样本消融仍只是第一组对照
 
-当前训练集同时包含三类负样本，但尚未系统比较：
+本轮已完成 `random_genome` only 与三类负样本全量之间的第一组对照，说明困难负样本能降低 `motif_hard` 与 `intronic` 假阳性。不过这仍不是完整网格。更系统的消融还应比较：
 
-- 只用 random_genome。
 - random_genome + intronic。
 - random_genome + motif_hard。
-- 三类负样本全量。
+- 不同比例的 motif_hard/intronic。
+- 更严格的 motif-hard 采样半径和近剪接位点排除规则。
 
-这类消融有助于量化困难负样本对模型泛化和假阳性控制的贡献。
+这类消融有助于把“困难负样本覆盖”与“负样本总量”分开，进一步量化不同负样本来源的边际贡献。
 
 ## 13. 扩展实验进展与后续方向
 
@@ -1463,23 +1576,25 @@ split:
 
 ### 13.3 负样本消融
 
-通过配置切换 `negative_type`：
+本轮已实现通过 `negatives.enabled_types` 切换训练负样本类型，并完成 random-only 全量训练：
 
 ```yaml
 negatives:
-  enabled_types: [random_genome, motif_hard, intronic]
+  enabled_types: [random_genome]
 ```
 
-比较不同负样本组合下的：
+对应数据集为 `data/processed/dnabert2_splice_401_random_only/`，模型输出为 `outputs/dnabert2_ablation_random_only/`，可视化输出为 `outputs/visualizations/dnabert2_ablation_random_only/`。该模型在自身 random-only test 上 macro-F1 为 0.972705，但在原始 full test 上 macro-F1 为 0.966504，且 `motif_hard` false-positive rate 为 0.071004，高于 full baseline 的 0.061291。
 
-- overall macro-F1。
-- motif_hard accuracy。
-- false positive rate。
-- splice-site probability 分布。
+因此当前结论是：random-only 负样本足以训练出整体三分类能力，但会削弱对 GT/AG motif-hard 负样本的控制。后续应继续比较：
+
+- random_genome + intronic。
+- random_genome + motif_hard。
+- 不同 negative:positive ratio。
+- motif-hard 采样规则和距离过滤强度。
 
 ### 13.4 可视化分析
 
-本轮已新增 `src/visualize.py`，并完成 baseline 与 chromosome-held-out 两组可视化：
+本轮已新增 `src/visualize.py`，并完成 baseline、chromosome-held-out 与 random-only ablation 三组可视化：
 
 - ROC curve。
 - PR curve。
@@ -1489,6 +1604,12 @@ negatives:
 - splice-site probability 分布。
 - negative-type summary。
 - motif_hard 高置信度假阳性案例表。
+
+新增目录包括：
+
+- `outputs/visualizations/dnabert2_full_baseline/`
+- `outputs/visualizations/dnabert2_chrom_holdout_full/`
+- `outputs/visualizations/dnabert2_ablation_random_only/`
 
 仍未完成但值得加入的解释性分析包括 DNABERT2 embedding UMAP/t-SNE、gradient/attention attribution heatmap、以及按基因 biotype 或重复序列区域分层的错误分析。
 
@@ -1539,10 +1660,11 @@ negatives:
 - 训练从本地小规模实验升级为双 GPU full fine-tuning。
 - 输出包括可复用 DatasetDict、Parquet、metrics JSON、prediction parquet、final model、CLI 推理接口和独立可视化目录。
 - 扩展实验增加了 chromosome-held-out split，并完成对应 full fine-tuning、测试评估和可视化。
+- 扩展实验增加了 random-only 负样本消融，并用原始 full test 复评困难负样本泛化。
 
-随机分层全量测试集结果显示，模型达到 accuracy 0.966906、macro-F1 0.966328，donor 与 acceptor 召回率均超过 0.970，说明 DNABERT2 能有效学习剪接位点上下文特征。chromosome-held-out 实验在 `chr9/chr10` test 上达到 accuracy 0.967469、macro-F1 0.966799，说明在当前留出方案下没有观察到明显跨染色体性能退化。按负样本类型分析，两组实验均显示 `motif_hard` 是最具挑战的负样本类别，提示后续优化应重点关注带 GT/AG motif 的假阳性控制。
+随机分层全量测试集结果显示，模型达到 accuracy 0.966906、macro-F1 0.966328，donor 与 acceptor 召回率均超过 0.970，说明 DNABERT2 能有效学习剪接位点上下文特征。chromosome-held-out 实验在 `chr9/chr10` test 上达到 accuracy 0.967469、macro-F1 0.966799，说明在当前留出方案下没有观察到明显跨染色体性能退化。random-only 消融在自身测试集上 macro-F1 为 0.972705，但在原始 full test 上 `motif_hard` false-positive rate 升至 7.10%，进一步证明困难负样本对假阳性控制有必要价值。
 
-总体而言，本项目已经满足课程任务中“基于 DNA foundation model 构建基因剪接位点预测算法”的要求，并提供了清晰的输入输出说明、完整源码结构、可复现运行命令、实测验证结果和可视化分析。后续可继续围绕更多 chromosome folds、参数高效微调、负样本消融、可视化解释和外部数据验证开展扩展实验。
+总体而言，本项目已经满足课程任务中“基于 DNA foundation model 构建基因剪接位点预测算法”的要求，并提供了清晰的输入输出说明、完整源码结构、可复现运行命令、实测验证结果和可视化分析。后续可继续围绕更多 chromosome folds、参数高效微调、负样本比例网格、可视化解释和外部数据验证开展扩展实验。
 
 ## 附录 A. 主要命令汇总
 
@@ -1597,6 +1719,23 @@ torchrun --nproc_per_node=2 -m src.train_dnabert2 \
   --config configs/dnabert2_chrom_holdout_full.yaml
 ```
 
+### random-only 负样本消融
+
+```bash
+python -m src.build_splice_dataset --config configs/dataset_random_only.yaml
+
+torchrun --nproc_per_node=2 -m src.train_dnabert2 \
+  --config configs/dnabert2_ablation_random_only.yaml
+
+python -m src.predict_dataset \
+  --model_dir outputs/dnabert2_ablation_random_only/final_model \
+  --input data/processed/dnabert2_splice_401/test.parquet \
+  --output outputs/dnabert2_ablation_random_only/full_test_predictions.parquet \
+  --metrics_output outputs/dnabert2_ablation_random_only/full_test_metrics.json \
+  --batch_size 256 \
+  --max_length 512
+```
+
 ### 可视化
 
 ```bash
@@ -1632,9 +1771,11 @@ python -m src.predict \
 |---|---|
 | `configs/dataset.yaml` | 全量数据集构建 |
 | `configs/dataset_chrom_holdout.yaml` | chromosome-held-out split 构建 |
+| `configs/dataset_random_only.yaml` | random-only 负样本消融数据集构建 |
 | `configs/dataset_smoke.yaml` | 小规模数据构建 smoke test |
 | `configs/dnabert2_full.yaml` | DNABERT2 full fine-tuning |
 | `configs/dnabert2_chrom_holdout_full.yaml` | chromosome-held-out DNABERT2 full fine-tuning |
+| `configs/dnabert2_ablation_random_only.yaml` | random-only 负样本消融 DNABERT2 full fine-tuning |
 | `configs/dnabert2_smoke.yaml` | DNABERT2 极小训练 smoke test |
 | `configs/baseline.yaml` | TF-IDF + logistic regression baseline |
 
@@ -1652,6 +1793,8 @@ python -m src.predict \
 | `data/processed/dnabert2_splice_401_chrom_holdout/split_summary.json` | chromosome-held-out split 审计 |
 | `data/processed/dnabert2_splice_401_chrom_holdout/valid.parquet` | `chr8` validation split |
 | `data/processed/dnabert2_splice_401_chrom_holdout/test.parquet` | `chr9/chr10` test split |
+| `data/processed/dnabert2_splice_401_random_only/summary.json` | random-only 数据构建 summary |
+| `data/processed/dnabert2_splice_401_random_only/test.parquet` | random-only test split |
 
 ### 模型输出
 
@@ -1666,8 +1809,13 @@ python -m src.predict \
 | `outputs/dnabert2_full/eval_metrics.json` | 统一评估输出 |
 | `outputs/dnabert2_chrom_holdout_full/metrics.json` | chromosome-held-out train/valid/test 指标 |
 | `outputs/dnabert2_chrom_holdout_full/test_predictions.parquet` | chromosome-held-out 测试集逐样本预测 |
+| `outputs/dnabert2_ablation_random_only/metrics.json` | random-only train/valid/test 指标 |
+| `outputs/dnabert2_ablation_random_only/test_predictions.parquet` | random-only 自身测试集逐样本预测 |
+| `outputs/dnabert2_ablation_random_only/full_test_metrics.json` | random-only 模型在原始 full test 上的指标 |
+| `outputs/dnabert2_ablation_random_only/full_test_predictions.parquet` | random-only 模型在原始 full test 上的逐样本预测 |
 | `outputs/visualizations/dnabert2_full_baseline/` | 随机分层 full baseline 可视化目录 |
 | `outputs/visualizations/dnabert2_chrom_holdout_full/` | chromosome-held-out full 可视化目录 |
+| `outputs/visualizations/dnabert2_ablation_random_only/` | random-only 消融可视化目录 |
 
 ## 附录 D. 关键源码片段说明
 

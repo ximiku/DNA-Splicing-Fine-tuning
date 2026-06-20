@@ -1,0 +1,81 @@
+{
+  "test": {
+    "accuracy": 0.9733519940059657,
+    "auprc_acceptor": 0.995052028560764,
+    "auprc_donor": 0.9952114879281783,
+    "auprc_non_splice": 0.9962473134949854,
+    "auroc_acceptor": 0.9979101588922139,
+    "auroc_donor": 0.9980490715630808,
+    "auroc_non_splice": 0.9964501399457817,
+    "confusion_matrix": [
+      [
+        68726,
+        949,
+        1062
+      ],
+      [
+        698,
+        34368,
+        131
+      ],
+      [
+        767,
+        163,
+        34610
+      ]
+    ],
+    "macro_f1": 0.9727047692706834,
+    "per_class": {
+      "acceptor": {
+        "f1": 0.9702423503357022,
+        "precision": 0.9666787699354803,
+        "recall": 0.973832301631964,
+        "support": 35540
+      },
+      "donor": {
+        "f1": 0.9725370346788913,
+        "precision": 0.9686583990980834,
+        "recall": 0.976446856266159,
+        "support": 35197
+      },
+      "non_splice": {
+        "f1": 0.9753349227974568,
+        "precision": 0.979128378282116,
+        "recall": 0.9715707479819613,
+        "support": 70737
+      }
+    }
+  },
+  "train": {
+    "epoch": 3.0,
+    "total_flos": 1.188408364934103e+18,
+    "train_loss": 0.13115125089078336,
+    "train_runtime": 7345.2361,
+    "train_samples_per_second": 462.255,
+    "train_steps_per_second": 3.612
+  },
+  "valid": {
+    "epoch": 3.0,
+    "eval_accuracy": 0.9719100329389145,
+    "eval_auprc_acceptor": 0.9945690245789541,
+    "eval_auprc_donor": 0.9945786319226769,
+    "eval_auprc_non_splice": 0.9958146013243901,
+    "eval_auroc_acceptor": 0.9977484645810885,
+    "eval_auroc_donor": 0.9978086156444989,
+    "eval_auroc_non_splice": 0.9960698027577073,
+    "eval_f1_acceptor": 0.96917918718348,
+    "eval_f1_donor": 0.9700676804576218,
+    "eval_f1_non_splice": 0.9742128063868859,
+    "eval_loss": 0.09064727276563644,
+    "eval_macro_f1": 0.9711532246759959,
+    "eval_precision_acceptor": 0.9664269926978709,
+    "eval_precision_donor": 0.9668915295379491,
+    "eval_precision_non_splice": 0.9772268214275555,
+    "eval_recall_acceptor": 0.9719471018570625,
+    "eval_recall_donor": 0.9732647668835412,
+    "eval_recall_non_splice": 0.9712173261518018,
+    "eval_runtime": 77.5234,
+    "eval_samples_per_second": 1824.919,
+    "eval_steps_per_second": 7.133
+  }
+}
