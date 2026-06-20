@@ -1,0 +1,82 @@
+{
+  "test": {
+    "accuracy": 0.9674687871705081,
+    "auprc_acceptor": 0.9931617524858951,
+    "auprc_donor": 0.9937586370743269,
+    "auprc_non_splice": 0.9946018604071444,
+    "auroc_acceptor": 0.9971809721674788,
+    "auroc_donor": 0.9974325624027138,
+    "auroc_non_splice": 0.9948646486140434,
+    "confusion_matrix": [
+      [
+        58743,
+        1061,
+        1212
+      ],
+      [
+        716,
+        28614,
+        109
+      ],
+      [
+        716,
+        97,
+        28955
+      ]
+    ],
+    "macro_f1": 0.9667991402006076,
+    "per_class": {
+      "acceptor": {
+        "f1": 0.9644593964426088,
+        "precision": 0.9563680803276523,
+        "recall": 0.9726887933351249,
+        "support": 29768
+      },
+      "donor": {
+        "f1": 0.9665096012565233,
+        "precision": 0.9611043933897622,
+        "recall": 0.9719759502700499,
+        "support": 29439
+      },
+      "non_splice": {
+        "f1": 0.9694284229026908,
+        "precision": 0.9762027420024927,
+        "recall": 0.96274747607185,
+        "support": 61016
+      }
+    }
+  },
+  "train": {
+    "epoch": 3.0,
+    "total_flos": 1.2990111111603814e+18,
+    "train_loss": 0.13672949052759759,
+    "train_runtime": 6709.747,
+    "train_samples_per_second": 553.14,
+    "train_steps_per_second": 4.322
+  },
+  "valid": {
+    "epoch": 3.0,
+    "eval_accuracy": 0.9659932718620906,
+    "eval_auprc_acceptor": 0.992684071486635,
+    "eval_auprc_donor": 0.9912805861831802,
+    "eval_auprc_non_splice": 0.9944758759409221,
+    "eval_auroc_acceptor": 0.9971321599556342,
+    "eval_auroc_donor": 0.9968131726525014,
+    "eval_auroc_non_splice": 0.99424587621708,
+    "eval_f1_acceptor": 0.9636576787807737,
+    "eval_f1_donor": 0.9611133551206257,
+    "eval_f1_non_splice": 0.969259130088187,
+    "eval_loss": 0.1079397201538086,
+    "eval_macro_f1": 0.964676721329862,
+    "eval_precision_acceptor": 0.9544959721315045,
+    "eval_precision_donor": 0.9558136137890739,
+    "eval_precision_non_splice": 0.9759531772575251,
+    "eval_recall_acceptor": 0.9729969667825701,
+    "eval_recall_donor": 0.9664721955542427,
+    "eval_recall_non_splice": 0.962656286081879,
+    "eval_runtime": 32.1358,
+    "eval_samples_per_second": 1785.269,
+    "eval_steps_per_second": 7.002
+  }
+}
+

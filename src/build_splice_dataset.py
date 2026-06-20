@@ -225,6 +225,15 @@ def negative_quotas(total_positive: int, config: dict[str, Any]) -> dict[str, in
     negative_cfg = config.get("negatives", {})
     total = int(round(total_positive * float(negative_cfg.get("negative_to_positive_ratio", 1.0))))
     fractions = negative_cfg.get("type_fractions", {"random_genome": 1 / 3, "motif_hard": 1 / 3, "intronic": 1 / 3})
+    enabled_types = negative_cfg.get("enabled_types")
+    if enabled_types:
+        enabled = [str(name) for name in enabled_types]
+        fractions = {name: float(fractions.get(name, 0.0)) for name in enabled}
+        fraction_total = sum(fractions.values())
+        if fraction_total <= 0:
+            fractions = {name: 1.0 / len(enabled) for name in enabled}
+        else:
+            fractions = {name: value / fraction_total for name, value in fractions.items()}
     quotas = {name: int(total * float(frac)) for name, frac in fractions.items()}
     remainder = total - sum(quotas.values())
     for name in list(quotas)[:remainder]:
@@ -232,18 +241,50 @@ def negative_quotas(total_positive: int, config: dict[str, Any]) -> dict[str, in
     return quotas
 
 
-def split_dataframe(df: pd.DataFrame, split_cfg: dict[str, Any], seed: int) -> dict[str, pd.DataFrame]:
-    """Random stratified train/valid/test split with fallback for tiny smoke runs."""
-    test_size = float(split_cfg.get("test_size", 0.1))
-    valid_size = float(split_cfg.get("valid_size", 0.1))
-    stratify_col = split_cfg.get("stratify_column", "stratify_key")
-
+def add_stratify_key(df: pd.DataFrame, stratify_col: str) -> pd.DataFrame:
+    """Add the default label/negative-type stratification key when needed."""
     df = df.copy()
     if stratify_col == "stratify_key" and "stratify_key" not in df.columns:
         df["stratify_key"] = df.apply(
             lambda row: row["negative_type"] if row["label"] == 0 else row["label_name"],
             axis=1,
         )
+    return df
+
+
+def chromosome_holdout_split(df: pd.DataFrame, split_cfg: dict[str, Any]) -> dict[str, pd.DataFrame]:
+    """Split records by held-out chromosomes with no train/valid/test chrom overlap."""
+    valid_chroms = {str(chrom) for chrom in split_cfg.get("valid_chroms", [])}
+    test_chroms = {str(chrom) for chrom in split_cfg.get("test_chroms", [])}
+    if not valid_chroms or not test_chroms:
+        raise ValueError("chromosome_holdout split requires non-empty valid_chroms and test_chroms")
+    overlap = valid_chroms & test_chroms
+    if overlap:
+        raise ValueError(f"valid_chroms and test_chroms overlap: {sorted(overlap)}")
+    chrom = df["chrom"].astype(str)
+    frames = {
+        "train": df[~chrom.isin(valid_chroms | test_chroms)].reset_index(drop=True),
+        "valid": df[chrom.isin(valid_chroms)].reset_index(drop=True),
+        "test": df[chrom.isin(test_chroms)].reset_index(drop=True),
+    }
+    empty = [name for name, frame in frames.items() if frame.empty]
+    if empty:
+        raise ValueError(f"chromosome_holdout produced empty split(s): {empty}")
+    return frames
+
+
+def split_dataframe(df: pd.DataFrame, split_cfg: dict[str, Any], seed: int) -> dict[str, pd.DataFrame]:
+    """Split records using random stratification or chromosome holdout."""
+    strategy = split_cfg.get("strategy", "random_stratified")
+    if strategy == "chromosome_holdout":
+        return chromosome_holdout_split(df.copy(), split_cfg)
+    if strategy not in {"random_stratified", "random"}:
+        raise ValueError(f"Unknown split strategy: {strategy}")
+
+    test_size = float(split_cfg.get("test_size", 0.1))
+    valid_size = float(split_cfg.get("valid_size", 0.1))
+    stratify_col = split_cfg.get("stratify_column", "stratify_key")
+    df = add_stratify_key(df, stratify_col)
 
     def safe_stratify(frame: pd.DataFrame, column: str) -> pd.Series | None:
         counts = frame[column].value_counts()
@@ -274,6 +315,31 @@ def split_dataframe(df: pd.DataFrame, split_cfg: dict[str, Any], seed: int) -> d
         "train": train.reset_index(drop=True),
         "valid": valid.reset_index(drop=True),
         "test": test.reset_index(drop=True),
+    }
+
+
+def split_summary(split_frames: dict[str, pd.DataFrame]) -> dict[str, Any]:
+    """Return JSON-friendly split counts and chromosome overlap audit details."""
+    split_chroms = {name: set(frame["chrom"].astype(str).unique()) for name, frame in split_frames.items()}
+    overlap = {
+        "train_valid": sorted(split_chroms.get("train", set()) & split_chroms.get("valid", set())),
+        "train_test": sorted(split_chroms.get("train", set()) & split_chroms.get("test", set())),
+        "valid_test": sorted(split_chroms.get("valid", set()) & split_chroms.get("test", set())),
+    }
+    return {
+        "split_sizes": {name: int(len(frame)) for name, frame in split_frames.items()},
+        "split_label_counts": {
+            name: {LABEL_NAMES[int(k)]: int(v) for k, v in frame["label"].value_counts().sort_index().items()}
+            for name, frame in split_frames.items()
+        },
+        "split_negative_type_counts": {
+            name: {str(k): int(v) for k, v in frame[frame["label"] == 0]["negative_type"].value_counts().items() if k}
+            for name, frame in split_frames.items()
+        },
+        "split_chrom_counts": {name: int(len(chroms)) for name, chroms in split_chroms.items()},
+        "split_chroms": {name: sorted(chroms) for name, chroms in split_chroms.items()},
+        "split_chrom_overlap": overlap,
+        "has_chrom_overlap": any(bool(values) for values in overlap.values()),
     }
 
 
@@ -358,11 +424,8 @@ def build_dataset(config: dict[str, Any]) -> dict[str, Any]:
         "n_records_total": int(len(df)),
         "label_counts": {LABEL_NAMES[int(k)]: int(v) for k, v in df["label"].value_counts().sort_index().items()},
         "negative_type_counts": {str(k): int(v) for k, v in df["negative_type"].value_counts().items() if k},
-        "split_sizes": {name: int(len(frame)) for name, frame in split_frames.items()},
-        "split_label_counts": {
-            name: {LABEL_NAMES[int(k)]: int(v) for k, v in frame["label"].value_counts().sort_index().items()}
-            for name, frame in split_frames.items()
-        },
+        "split": config.get("split", {}),
+        **split_summary(split_frames),
     }
     write_json(summary, output_dir / "summary.json")
     logging.info("Saved dataset to %s", output_dir)
@@ -386,4 +449,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

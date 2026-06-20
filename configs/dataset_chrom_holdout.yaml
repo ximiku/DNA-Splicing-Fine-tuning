@@ -1,0 +1,10 @@
+seed: 42
+
+split:
+  strategy: chromosome_holdout
+  valid_chroms: [chr8]
+  test_chroms: [chr9, chr10]
+  stratify_column: stratify_key
+
+logging:
+  level: INFO

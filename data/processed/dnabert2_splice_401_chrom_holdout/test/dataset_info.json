@@ -1,0 +1,80 @@
+{
+  "citation": "",
+  "description": "",
+  "features": {
+    "chrom": {
+      "dtype": "large_string",
+      "_type": "Value"
+    },
+    "strand": {
+      "dtype": "large_string",
+      "_type": "Value"
+    },
+    "gene_id": {
+      "dtype": "large_string",
+      "_type": "Value"
+    },
+    "transcript_id": {
+      "dtype": "large_string",
+      "_type": "Value"
+    },
+    "intron_start": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "intron_end": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "intron_index": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "negative_type": {
+      "dtype": "large_string",
+      "_type": "Value"
+    },
+    "pos": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "label": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "label_name": {
+      "dtype": "large_string",
+      "_type": "Value"
+    },
+    "site_type": {
+      "dtype": "large_string",
+      "_type": "Value"
+    },
+    "n_transcripts": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "n_genes": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "sequence": {
+      "dtype": "large_string",
+      "_type": "Value"
+    },
+    "window_start": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "window_end": {
+      "dtype": "int64",
+      "_type": "Value"
+    },
+    "stratify_key": {
+      "dtype": "large_string",
+      "_type": "Value"
+    }
+  },
+  "homepage": "",
+  "license": ""
+}

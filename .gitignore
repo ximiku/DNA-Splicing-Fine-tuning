@@ -15,12 +15,16 @@ data/raw/*
 data/processed/dnabert2_splice_401/**/*.arrow
 data/processed/dnabert2_splice_401/**/cache-*.arrow
 data/processed/dnabert2_splice_401/train.parquet
+data/processed/**/*.arrow
+data/processed/**/cache-*.arrow
+data/processed/**/train.parquet
 
 # Keep metrics, trainer state, tokenizer/config files, and prediction parquet.
 # Exclude model weights and optimizer states because this repository uses
 # ordinary Git only, not Git LFS.
 outputs/**/*.safetensors
 outputs/**/optimizer.pt
+outputs/**/checkpoints/checkpoint-*/
 *.ckpt
 /checkpoint-*/
 
