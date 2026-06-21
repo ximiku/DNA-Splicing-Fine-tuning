@@ -20,7 +20,7 @@
 
 项目使用 `data/raw/GRCh38.p14.genome.fa` 与 `data/raw/gencode.v49.basic.annotation.gtf` 构建全基因组训练数据。正样本不是简单取 exon 端点，而是先按 `transcript_id` 分组解析 GTF exon，再按照转录方向排序 exon，由相邻 exon 推导 transcript-level intron，最后从 intron 两端生成 donor 与 acceptor 正样本。负样本包括随机基因组背景、真实基因组中具有 GT/AG motif 的困难负样本、以及 transcript-level intron 内部负样本。
 
-主模型使用 HuggingFace 上的 `zhihan1996/DNABERT-2-117M`。DNABERT2 直接接收原始 DNA 字符串，本项目没有沿用旧 DNABERT 的手动 k-mer tokenization。训练方式为 full fine-tuning，使用两张 NVIDIA RTX PRO 6000 Blackwell Server Edition GPU 进行多 GPU 训练。
+主模型使用 HuggingFace 上的 `zhihan1996/DNABERT-2-117M`。DNABERT2 直接接收原始 DNA 字符串，本项目没有沿用旧 DNABERT 的手动 k-mer tokenization。核心结果采用 full fine-tuning，同时扩展完成 linear probe 与 LoRA 参数高效微调对照，使用两张 NVIDIA RTX PRO 6000 Blackwell Server Edition GPU 进行多 GPU 训练。
 
 全量实验共构建 1,414,738 条样本，其中 `non_splice` 707,369 条、`donor` 351,969 条、`acceptor` 355,400 条。随机分层 full fine-tuning baseline 在测试集上达到 accuracy 0.966906、macro-F1 0.966328。三个类别的一对多 AUROC 均超过 0.994，AUPRC 均超过 0.993。按负样本类型分析，`motif_hard` 是当前最难负样本类型，其 accuracy 为 0.938709，说明模型在中心附近存在 GT/AG motif 的非注释位点上仍会发生更多混淆。
 
@@ -29,6 +29,8 @@
 随后新增 chromosome-held-out full fine-tuning 实验：valid 完全使用 `chr8`，test 完全使用 `chr9` 与 `chr10`，其余染色体和 GRCh38 alternate/unplaced contigs 用于 train。split 审计显示 train/valid/test 之间无染色体重叠。该严格切分实验在 held-out test 上达到 accuracy 0.967469、macro-F1 0.966799，未观察到相对随机分层 baseline 的性能下降。对应指标和可视化保存在 `outputs/dnabert2_chrom_holdout_full/` 与 `outputs/visualizations/dnabert2_chrom_holdout_full/`。
 
 负样本消融实验进一步构建了 random-only 训练集：负样本只保留 `random_genome`，negative:positive ratio 仍为 1.0。该模型在自身 random-only test 上达到 macro-F1 0.972705，但在原始 full test 上为 0.966504，并且 `motif_hard` false-positive rate 从 full baseline 的 0.061291 升至 0.071004。结果说明只用随机负样本会高估模型表现，困难负样本对控制 GT/AG motif 附近假阳性具有实际价值。对应输出保存在 `outputs/dnabert2_ablation_random_only/` 与 `outputs/visualizations/dnabert2_ablation_random_only/`。
+
+参数高效微调对照显示，linear probe 在冻结 DNABERT2 主干后只能达到 accuracy 0.631480、macro-F1 0.562948，说明浅层分类头不足以适配剪接位点三分类任务。LoRA 只训练约 88.8 万参数，占 PEFT 包装后模型参数的 0.75%，在原始 full test 上达到 accuracy 0.949439、macro-F1 0.948605，显著优于 linear probe，但仍低于 full fine-tuning baseline。对应输出和图表保存在 `outputs/dnabert2_linear_probe/`、`outputs/dnabert2_lora/`、`outputs/visualizations/dnabert2_linear_probe/` 与 `outputs/visualizations/dnabert2_lora/`。
 
 ## 1. 任务定义
 
@@ -530,16 +532,24 @@ AutoModelForSequenceClassification.from_pretrained(
 
 `num_labels=3` 对应三分类任务。`id2label` 与 `label2id` 显式写入模型配置，便于训练后推理和模型保存。
 
-### 5.2 full fine-tuning
+### 5.2 训练模式：full、linear probe 与 LoRA
 
-本项目首要实验不是 frozen embedding 或 linear probe，而是 full fine-tuning。也就是说，DNABERT2 主干参数和分类头一起参与训练。
-
-选择 full fine-tuning 的原因：
+主结论仍以 full fine-tuning 为准，也就是说 DNABERT2 主干参数和分类头一起参与训练。选择 full fine-tuning 的原因：
 
 - 数据规模达到百万级，足以支持更新大模型参数。
 - 剪接位点识别需要建模较细的局部序列模式和上下文组合。
 - donor、acceptor、non_splice 三类的边界不只是简单 motif 区分，尤其是 motif_hard 负样本要求模型更充分适配任务。
 - 当前服务器具备两张大显存 GPU，资源条件支持 full fine-tuning。
+
+扩展实验在同一训练脚本中新增 `model.training_mode`，用于比较参数更新范围与性能的关系：
+
+| 训练模式 | 配置文件 | 可训练参数 | 可训练比例 | 说明 |
+|---|---|---:|---:|---|
+| full | `configs/dnabert2_full.yaml` | 117,070,851 | 100.00% | 更新 DNABERT2 主干与分类头 |
+| linear_probe | `configs/dnabert2_linear_probe.yaml` | 592,899 | 0.51% | 冻结 DNABERT2 encoder，仅训练 pooler 与 classifier |
+| lora | `configs/dnabert2_lora.yaml` | 887,811 | 0.75% | 在 attention `Wqkv` 上使用 LoRA，保存 classifier 与 pooler |
+
+LoRA 配置使用 `r=8`、`alpha=16`、`dropout=0.05`，目标层为 DNABERT2 attention 中的 `Wqkv`。训练脚本会记录 trainable parameters、GPU memory、runtime 和 artifact size，并支持 `--resume_from_checkpoint` 断点续训。
 
 ### 5.3 tokenization
 
@@ -690,7 +700,7 @@ outputs/dnabert2_full/test_predictions.parquet
 
 ### 7.1 训练运行概况
 
-本节先给出随机分层 full fine-tuning baseline，再给出 chromosome-held-out full fine-tuning 和 random-only 负样本消融。三组均使用 DNABERT2 full fine-tuning、401 bp 输入窗口和相同训练超参数；差异分别来自数据 split 与训练负样本构成。
+本节先给出随机分层 full fine-tuning baseline，再给出 chromosome-held-out full fine-tuning、random-only 负样本消融，以及 linear probe/LoRA 参数高效微调对照。前 3 组均使用 DNABERT2 full fine-tuning、401 bp 输入窗口和相同训练超参数；差异分别来自数据 split 与训练负样本构成。最后一组固定回到原始随机 split full test，用于衡量冻结主干和 LoRA adapter 相对 full fine-tuning 的收益与代价。
 
 训练输出目录：
 
@@ -965,6 +975,60 @@ splice-site probability 分布显示，random-only 模型将更多 `motif_hard` 
 
 ![DNABERT2 random-only ablation centered nucleotide frequency patterns](../outputs/visualizations/dnabert2_ablation_random_only/centered_sequence_frequency.png)
 
+### 7.10 linear probe 与 LoRA 参数高效微调结果
+
+参数高效微调对照使用原始 `data/processed/dnabert2_splice_401/` 随机 split 数据集，并在同一个 full test 上评估。输出目录如下：
+
+```text
+outputs/dnabert2_linear_probe/
+outputs/dnabert2_lora/
+outputs/visualizations/dnabert2_linear_probe/
+outputs/visualizations/dnabert2_lora/
+outputs/visualizations/experiment_comparison/
+```
+
+linear probe 冻结 DNABERT2 encoder，仅训练 pooler 和 classifier；LoRA 在 attention `Wqkv` 上添加 rank 8 adapter，并保存 classifier/pooler。两者与 full baseline 的整体比较如下，完整 CSV/Markdown 表见 [`experiment_comparison.csv`](../outputs/visualizations/experiment_comparison/experiment_comparison.csv) 与 [`experiment_comparison.md`](../outputs/visualizations/experiment_comparison/experiment_comparison.md)。
+
+| 实验 | 模式 | accuracy | macro-F1 | mean AUROC | mean AUPRC | motif_hard FPR | runtime | trainable params | final model size |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| full baseline | full | 0.966906 | 0.966328 | 0.996329 | 0.993541 | 0.061291 | 7,367.853 s | 117,070,851 | 0.436 GiB |
+| linear probe | linear_probe | 0.631480 | 0.562948 | 0.777888 | 0.623310 | 0.127121 | 2,892.696 s | 592,899 | 0.436 GiB |
+| LoRA | lora | 0.949439 | 0.948605 | 0.992616 | 0.987111 | 0.073592 | 6,964.450 s | 887,811 | 0.0037 GiB |
+
+linear probe 的结果明显不足：三分类 macro-F1 只有 0.562948，真实 donor/acceptor 大量被判成 `non_splice` 或互相混淆。这说明 DNABERT2 预训练表示不能直接通过一个浅层线性头解决本任务，至少需要更新更靠近序列建模层的参数。
+
+linear probe 的训练曲线和混淆矩阵如下：
+
+![DNABERT2 linear probe training curves](../outputs/visualizations/dnabert2_linear_probe/training_curves.png)
+
+![DNABERT2 linear probe confusion matrix](../outputs/visualizations/dnabert2_linear_probe/confusion_matrix.png)
+
+LoRA 明显优于 linear probe：macro-F1 提升到 0.948605，三个类别的一对多 AUROC 仍在 0.989 以上。不过 LoRA 相比 full baseline 仍少约 1.77 个 macro-F1 点，且 `motif_hard` false-positive rate 为 7.36%，高于 full baseline 的 6.13%。这说明 rank 8 `Wqkv` adapter 已能学习大部分剪接位点信号，但对困难负样本边界的拟合仍不如全参数微调充分。
+
+LoRA 的 ROC/PR 曲线和混淆矩阵如下：
+
+![DNABERT2 LoRA ROC curves](../outputs/visualizations/dnabert2_lora/roc_curve.png)
+
+![DNABERT2 LoRA PR curves](../outputs/visualizations/dnabert2_lora/pr_curve.png)
+
+| true \ pred | non_splice | donor | acceptor |
+|---|---:|---:|---:|
+| non_splice | 66,778 | 2,039 | 1,920 |
+| donor | 1,341 | 33,635 | 221 |
+| acceptor | 1,430 | 202 | 33,908 |
+
+![DNABERT2 LoRA confusion matrix](../outputs/visualizations/dnabert2_lora/confusion_matrix.png)
+
+按负样本类型看，LoRA 对三类负样本的误报率均高于 full baseline，尤其是 `random_genome` 与 `intronic` 的右尾更厚。这与 full fine-tuning 的优势相一致：全参数更新不仅学习 canonical donor/acceptor motif，也更好地压低了非剪接上下文的 splice-site probability。
+
+| negative_type | n | accuracy | false_positive_rate | donor_fp | acceptor_fp | mean_splice_site_probability |
+|---|---:|---:|---:|---:|---:|---:|
+| motif_hard | 23,576 | 0.926408 | 0.073592 | 963 | 772 | 0.098066 |
+| random_genome | 23,584 | 0.950984 | 0.049016 | 531 | 625 | 0.069217 |
+| intronic | 23,577 | 0.954702 | 0.045298 | 545 | 523 | 0.068286 |
+
+![DNABERT2 LoRA splice probability distributions](../outputs/visualizations/dnabert2_lora/splice_probability_distribution.png)
+
 ## 8. baseline 与 smoke test
 
 ### 8.1 baseline 设计
@@ -1073,9 +1137,15 @@ smoke 训练配置中：
 ```text
 configs/
   baseline.yaml
+  dataset_chrom_holdout.yaml
+  dataset_random_only.yaml
   dataset.yaml
   dataset_smoke.yaml
+  dnabert2_ablation_random_only.yaml
+  dnabert2_chrom_holdout_full.yaml
   dnabert2_full.yaml
+  dnabert2_linear_probe.yaml
+  dnabert2_lora.yaml
   dnabert2_smoke.yaml
 data/
   raw/
@@ -1088,6 +1158,7 @@ src/
   __init__.py
   baselines.py
   build_splice_dataset.py
+  compare_experiments.py
   config_utils.py
   evaluate.py
   gtf_utils.py
@@ -1109,7 +1180,7 @@ src/
 | `src/sequence_utils.py` | FASTA 打开、染色体名匹配、窗口截取、坐标转换、reverse complement、DNA 序列过滤、中心 motif 检查 |
 | `src/gtf_utils.py` | GTF attribute 解析、exon 分组、transcript-level intron 推导、正样本位点生成、正样本去重 |
 | `src/build_splice_dataset.py` | 正负样本构建、窗口抽取、负样本采样、分层划分、DatasetDict/Parquet/summary 输出 |
-| `src/train_dnabert2.py` | DNABERT2 tokenizer/model 加载、三分类 full fine-tuning、checkpoint/final model/metrics/predictions 输出 |
+| `src/train_dnabert2.py` | DNABERT2 tokenizer/model 加载、full/linear_probe/LoRA 训练、checkpoint/final model/metrics/predictions 输出 |
 | `src/metrics_utils.py` | accuracy、macro-F1、per-class 指标、confusion matrix、AUROC、AUPRC |
 | `src/evaluate.py` | 从 prediction parquet/csv/jsonl 统一计算 overall 与 negative_type 分组指标 |
 | `src/predict.py` | 给定 FASTA、chrom、pos、strand 和模型目录，进行单点推理 |
@@ -1118,6 +1189,7 @@ src/
 | `src/model_utils.py` | DNABERT2 remote code 兼容处理，禁用不兼容 flash attention，保存 remote model code |
 | `src/config_utils.py` | YAML 读取、随机种子、日志、JSON 写入、目录创建 |
 | `src/visualize.py` | ROC/PR、混淆矩阵、训练曲线、概率分布、中心序列频率和 motif-hard 假阳性案例可视化 |
+| `src/compare_experiments.py` | 汇总 full、held-out、负样本消融、linear probe 与 LoRA 的指标、runtime、参数量和 artifact size |
 
 ### 9.3 数据构建主流程伪代码
 
@@ -1522,16 +1594,16 @@ random-only 消融验证了这一判断。只用 `random_genome` 训练时，模
 
 当前评估仍基于同一 GENCODE v49 basic annotation 构建流程。即使 chromosome-held-out 消除了 train/test 染色体重叠，也无法证明模型能推广到其他 annotation 版本、MANE transcript、实验验证 splice junction、RNA-seq junction evidence 或疾病变异数据。
 
-### 12.6 没有做参数高效微调对照
+### 12.6 参数高效微调仍有调参空间
 
-本项目首版采用 full fine-tuning。尚未比较：
+本轮已经完成 linear probe 与 LoRA 对照。linear probe 明显不足，LoRA 能在只训练 0.75% 参数的情况下达到 macro-F1 0.948605，但仍低于 full baseline 的 0.966328，且 motif-hard false-positive rate 更高。当前 LoRA 只是第一组保守设置：
 
-- frozen DNABERT2 embedding + linear probe。
-- LoRA。
-- adapter。
-- 只训练分类头。
+- target modules 只包含 attention `Wqkv`。
+- rank 固定为 8。
+- 没有比较更高 rank、更多 target modules 或不同 dropout。
+- 没有加入 QLoRA、prefix tuning、adapter tuning 等其他 PEFT 方法。
 
-这些实验可以帮助分析 full fine-tuning 的收益与成本。
+因此当前结论是：LoRA 是可行的轻量方案，但若目标是接近 full fine-tuning 的困难负样本控制能力，还需要进一步做 PEFT 超参数网格和 target-layer 扩展。
 
 ### 12.7 负样本消融仍只是第一组对照
 
@@ -1561,18 +1633,20 @@ split:
 
 ### 13.2 LoRA 与 linear probe
 
-实现新的训练配置：
+本轮已实现并完成两种参数高效对照配置：
 
 - `dnabert2_lora.yaml`
 - `dnabert2_linear_probe.yaml`
 
-比较指标：
+linear probe 冻结 DNABERT2 encoder，只训练 pooler 和 classifier；LoRA 使用 rank 8、`alpha=16`、`dropout=0.05`，目标层为 attention `Wqkv`。对应输出为：
 
-- macro-F1。
-- AUROC/AUPRC。
-- 显存占用。
-- 训练时间。
-- checkpoint 大小。
+- `outputs/dnabert2_linear_probe/`
+- `outputs/dnabert2_lora/`
+- `outputs/visualizations/dnabert2_linear_probe/`
+- `outputs/visualizations/dnabert2_lora/`
+- `outputs/visualizations/experiment_comparison/`
+
+结果显示，linear probe 在 full test 上 macro-F1 仅为 0.562948，说明冻结主干后浅层头无法充分利用 DNABERT2 表示完成剪接位点三分类。LoRA 在 full test 上达到 macro-F1 0.948605，显著优于 linear probe，但仍低于 full fine-tuning baseline 0.966328。LoRA 的 final adapter 目录约 0.0037 GiB，checkpoint 总量约 0.031 GiB，体现了明显的存储优势。
 
 ### 13.3 负样本消融
 
@@ -1594,7 +1668,7 @@ negatives:
 
 ### 13.4 可视化分析
 
-本轮已新增 `src/visualize.py`，并完成 baseline、chromosome-held-out 与 random-only ablation 三组可视化：
+本轮已新增 `src/visualize.py`，并完成 baseline、chromosome-held-out、random-only ablation、linear probe 与 LoRA 的可视化：
 
 - ROC curve。
 - PR curve。
@@ -1610,8 +1684,11 @@ negatives:
 - `outputs/visualizations/dnabert2_full_baseline/`
 - `outputs/visualizations/dnabert2_chrom_holdout_full/`
 - `outputs/visualizations/dnabert2_ablation_random_only/`
+- `outputs/visualizations/dnabert2_linear_probe/`
+- `outputs/visualizations/dnabert2_lora/`
+- `outputs/visualizations/experiment_comparison/`
 
-仍未完成但值得加入的解释性分析包括 DNABERT2 embedding UMAP/t-SNE、gradient/attention attribution heatmap、以及按基因 biotype 或重复序列区域分层的错误分析。
+仍值得加入的解释性分析包括 DNABERT2 embedding UMAP/t-SNE、gradient/attention attribution heatmap、以及按基因 biotype 或重复序列区域分层的错误分析。
 
 ### 13.5 概率校准与阈值选择
 
@@ -1661,10 +1738,11 @@ negatives:
 - 输出包括可复用 DatasetDict、Parquet、metrics JSON、prediction parquet、final model、CLI 推理接口和独立可视化目录。
 - 扩展实验增加了 chromosome-held-out split，并完成对应 full fine-tuning、测试评估和可视化。
 - 扩展实验增加了 random-only 负样本消融，并用原始 full test 复评困难负样本泛化。
+- 扩展实验增加了 linear probe 与 LoRA，并比较参数量、runtime、模型大小和困难负样本误报率。
 
-随机分层全量测试集结果显示，模型达到 accuracy 0.966906、macro-F1 0.966328，donor 与 acceptor 召回率均超过 0.970，说明 DNABERT2 能有效学习剪接位点上下文特征。chromosome-held-out 实验在 `chr9/chr10` test 上达到 accuracy 0.967469、macro-F1 0.966799，说明在当前留出方案下没有观察到明显跨染色体性能退化。random-only 消融在自身测试集上 macro-F1 为 0.972705，但在原始 full test 上 `motif_hard` false-positive rate 升至 7.10%，进一步证明困难负样本对假阳性控制有必要价值。
+随机分层全量测试集结果显示，模型达到 accuracy 0.966906、macro-F1 0.966328，donor 与 acceptor 召回率均超过 0.970，说明 DNABERT2 能有效学习剪接位点上下文特征。chromosome-held-out 实验在 `chr9/chr10` test 上达到 accuracy 0.967469、macro-F1 0.966799，说明在当前留出方案下没有观察到明显跨染色体性能退化。random-only 消融在自身测试集上 macro-F1 为 0.972705，但在原始 full test 上 `motif_hard` false-positive rate 升至 7.10%，进一步证明困难负样本对假阳性控制有必要价值。参数高效对照中，linear probe macro-F1 仅为 0.562948，而 LoRA 达到 0.948605，说明 LoRA 是可行的轻量适配方案，但 full fine-tuning 仍是当前最优选择。
 
-总体而言，本项目已经满足课程任务中“基于 DNA foundation model 构建基因剪接位点预测算法”的要求，并提供了清晰的输入输出说明、完整源码结构、可复现运行命令、实测验证结果和可视化分析。后续可继续围绕更多 chromosome folds、参数高效微调、负样本比例网格、可视化解释和外部数据验证开展扩展实验。
+总体而言，本项目已经满足课程任务中“基于 DNA foundation model 构建基因剪接位点预测算法”的要求，并提供了清晰的输入输出说明、完整源码结构、可复现运行命令、实测验证结果和可视化分析。后续可继续围绕更多 chromosome folds、LoRA rank/target-layer 网格、负样本比例网格、可视化解释和外部数据验证开展扩展实验。
 
 ## 附录 A. 主要命令汇总
 
@@ -1736,6 +1814,20 @@ python -m src.predict_dataset \
   --max_length 512
 ```
 
+### linear probe 与 LoRA
+
+```bash
+torchrun --nproc_per_node=2 -m src.train_dnabert2 \
+  --config configs/dnabert2_linear_probe.yaml
+
+torchrun --nproc_per_node=2 -m src.train_dnabert2 \
+  --config configs/dnabert2_lora.yaml
+
+torchrun --nproc_per_node=2 -m src.train_dnabert2 \
+  --config configs/dnabert2_lora.yaml \
+  --resume_from_checkpoint outputs/dnabert2_lora/checkpoints/checkpoint-25000
+```
+
 ### 可视化
 
 ```bash
@@ -1744,6 +1836,15 @@ python -m src.visualize \
   --trainer_state outputs/dnabert2_full/checkpoints/trainer_state.json \
   --output_dir outputs/visualizations/dnabert2_full_baseline \
   --title dnabert2_full_baseline
+
+python -m src.visualize \
+  --predictions outputs/dnabert2_lora/test_predictions.parquet \
+  --trainer_state outputs/dnabert2_lora/checkpoints/trainer_state.json \
+  --output_dir outputs/visualizations/dnabert2_lora \
+  --title dnabert2_lora
+
+python -m src.compare_experiments \
+  --output_dir outputs/visualizations/experiment_comparison
 ```
 
 ### 最终评估
@@ -1776,6 +1877,8 @@ python -m src.predict \
 | `configs/dnabert2_full.yaml` | DNABERT2 full fine-tuning |
 | `configs/dnabert2_chrom_holdout_full.yaml` | chromosome-held-out DNABERT2 full fine-tuning |
 | `configs/dnabert2_ablation_random_only.yaml` | random-only 负样本消融 DNABERT2 full fine-tuning |
+| `configs/dnabert2_linear_probe.yaml` | 冻结 DNABERT2 encoder 的 linear probe 对照 |
+| `configs/dnabert2_lora.yaml` | DNABERT2 LoRA 参数高效微调 |
 | `configs/dnabert2_smoke.yaml` | DNABERT2 极小训练 smoke test |
 | `configs/baseline.yaml` | TF-IDF + logistic regression baseline |
 
@@ -1813,9 +1916,17 @@ python -m src.predict \
 | `outputs/dnabert2_ablation_random_only/test_predictions.parquet` | random-only 自身测试集逐样本预测 |
 | `outputs/dnabert2_ablation_random_only/full_test_metrics.json` | random-only 模型在原始 full test 上的指标 |
 | `outputs/dnabert2_ablation_random_only/full_test_predictions.parquet` | random-only 模型在原始 full test 上的逐样本预测 |
+| `outputs/dnabert2_linear_probe/metrics.json` | linear probe train/valid/test 指标与参数统计 |
+| `outputs/dnabert2_linear_probe/test_predictions.parquet` | linear probe 测试集逐样本预测 |
+| `outputs/dnabert2_lora/metrics.json` | LoRA train/valid/test 指标、参数统计与 artifact size |
+| `outputs/dnabert2_lora/final_model/adapter_config.json` | LoRA adapter 配置 |
+| `outputs/dnabert2_lora/test_predictions.parquet` | LoRA 测试集逐样本预测 |
 | `outputs/visualizations/dnabert2_full_baseline/` | 随机分层 full baseline 可视化目录 |
 | `outputs/visualizations/dnabert2_chrom_holdout_full/` | chromosome-held-out full 可视化目录 |
 | `outputs/visualizations/dnabert2_ablation_random_only/` | random-only 消融可视化目录 |
+| `outputs/visualizations/dnabert2_linear_probe/` | linear probe 可视化目录 |
+| `outputs/visualizations/dnabert2_lora/` | LoRA 可视化目录 |
+| `outputs/visualizations/experiment_comparison/experiment_comparison.md` | 5 组实验总比较表 |
 
 ## 附录 D. 关键源码片段说明
 

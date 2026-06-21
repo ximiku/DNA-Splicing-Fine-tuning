@@ -7,9 +7,9 @@ import json
 from pathlib import Path
 
 import torch
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoTokenizer
 
-from .model_utils import disable_remote_flash_attention
+from .model_utils import disable_remote_flash_attention, load_saved_sequence_classifier
 from .sequence_utils import get_centered_window, is_clean_dna, open_fasta
 
 
@@ -33,7 +33,9 @@ def predict_position(
         raise ValueError("Requested window contains non-ACGT bases")
 
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-    model = AutoModelForSequenceClassification.from_pretrained(model_dir, trust_remote_code=True)
+    id2label = {idx: name for idx, name in enumerate(LABEL_NAMES)}
+    label2id = {name: idx for idx, name in id2label.items()}
+    model = load_saved_sequence_classifier(model_dir, id2label=id2label, label2id=label2id)
     disable_remote_flash_attention(model)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)

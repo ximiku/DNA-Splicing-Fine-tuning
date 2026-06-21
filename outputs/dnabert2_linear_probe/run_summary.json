@@ -1,0 +1,24 @@
+{
+  "artifacts": {
+    "checkpoints_size_bytes": 1420254979,
+    "final_model_size_bytes": 468685314,
+    "output_dir_size_bytes": 1928284767
+  },
+  "gpu_memory": {
+    "cuda:0": {
+      "max_allocated_bytes": 0,
+      "max_reserved_bytes": 0
+    },
+    "cuda:1": {
+      "max_allocated_bytes": 13308580864,
+      "max_reserved_bytes": 17802723328
+    }
+  },
+  "parameters": {
+    "frozen_parameters": 116477952,
+    "total_parameters": 117070851,
+    "trainable_fraction": 0.005064445973831693,
+    "trainable_parameters": 592899
+  },
+  "training_mode": "linear_probe"
+}

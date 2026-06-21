@@ -11,11 +11,11 @@ import numpy as np
 import pandas as pd
 import torch
 from tqdm import tqdm
-from transformers import AutoModelForSequenceClassification, AutoTokenizer
+from transformers import AutoTokenizer
 
 from .config_utils import ensure_dir, write_json
 from .metrics_utils import LABEL_NAMES, classification_metrics
-from .model_utils import disable_remote_flash_attention
+from .model_utils import disable_remote_flash_attention, load_saved_sequence_classifier
 
 
 def read_table(path: Path) -> pd.DataFrame:
@@ -39,7 +39,9 @@ def predict_frame(
         raise ValueError("Input table must contain a sequence column")
 
     tokenizer = AutoTokenizer.from_pretrained(model_dir, trust_remote_code=True)
-    model = AutoModelForSequenceClassification.from_pretrained(model_dir, trust_remote_code=True)
+    id2label = {idx: name for idx, name in enumerate(LABEL_NAMES)}
+    label2id = {name: idx for idx, name in id2label.items()}
+    model = load_saved_sequence_classifier(model_dir, id2label=id2label, label2id=label2id)
     if disable_flash_attention:
         disable_remote_flash_attention(model)
 

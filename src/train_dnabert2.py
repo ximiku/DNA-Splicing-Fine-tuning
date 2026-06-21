@@ -29,6 +29,117 @@ def log_runtime() -> None:
         logging.info("distributed world_size=%s rank=%s", torch.distributed.get_world_size(), torch.distributed.get_rank())
 
 
+def reset_cuda_peak_memory() -> None:
+    """Reset CUDA peak memory counters before training starts."""
+    if not torch.cuda.is_available():
+        return
+    for idx in range(torch.cuda.device_count()):
+        try:
+            torch.cuda.reset_peak_memory_stats(idx)
+        except RuntimeError:
+            logging.debug("Could not reset CUDA peak memory for device %s", idx)
+
+
+def cuda_memory_summary() -> dict[str, dict[str, int]]:
+    """Return per-device CUDA memory peaks recorded by PyTorch."""
+    if not torch.cuda.is_available():
+        return {}
+    summary: dict[str, dict[str, int]] = {}
+    for idx in range(torch.cuda.device_count()):
+        summary[f"cuda:{idx}"] = {
+            "max_allocated_bytes": int(torch.cuda.max_memory_allocated(idx)),
+            "max_reserved_bytes": int(torch.cuda.max_memory_reserved(idx)),
+        }
+    return summary
+
+
+def directory_size_bytes(path: str | Path) -> int:
+    """Compute total file size below a directory."""
+    root = Path(path)
+    if not root.exists():
+        return 0
+    if root.is_file():
+        return root.stat().st_size
+    return sum(item.stat().st_size for item in root.rglob("*") if item.is_file())
+
+
+def parameter_summary(model: torch.nn.Module) -> dict[str, Any]:
+    """Count total and trainable model parameters."""
+    total = sum(param.numel() for param in model.parameters())
+    trainable = sum(param.numel() for param in model.parameters() if param.requires_grad)
+    return {
+        "total_parameters": int(total),
+        "trainable_parameters": int(trainable),
+        "frozen_parameters": int(total - trainable),
+        "trainable_fraction": float(trainable / total) if total else 0.0,
+    }
+
+
+def configure_linear_probe(model: torch.nn.Module, model_cfg: dict[str, Any]) -> torch.nn.Module:
+    """Freeze DNABERT2 embeddings/encoder and train only the shallow prediction layers."""
+    train_pooler = bool(model_cfg.get("linear_probe", {}).get("train_pooler", True))
+    bert = getattr(model, "bert", None)
+    if bert is not None:
+        for param in bert.parameters():
+            param.requires_grad = False
+        if train_pooler and getattr(bert, "pooler", None) is not None:
+            for param in bert.pooler.parameters():
+                param.requires_grad = True
+    classifier = getattr(model, "classifier", None)
+    if classifier is not None:
+        for param in classifier.parameters():
+            param.requires_grad = True
+    return model
+
+
+def configure_lora(model: torch.nn.Module, model_cfg: dict[str, Any]) -> torch.nn.Module:
+    """Wrap DNABERT2 with PEFT LoRA adapters."""
+    try:
+        from peft import LoraConfig, TaskType, get_peft_model
+    except ImportError as exc:
+        raise ImportError("LoRA training requires the peft package. Install it in the training environment.") from exc
+
+    lora_cfg = model_cfg.get("lora", {})
+    peft_config = LoraConfig(
+        task_type=TaskType.SEQ_CLS,
+        r=int(lora_cfg.get("r", 8)),
+        lora_alpha=int(lora_cfg.get("alpha", 16)),
+        lora_dropout=float(lora_cfg.get("dropout", 0.05)),
+        target_modules=list(lora_cfg.get("target_modules", ["Wqkv"])),
+        bias=str(lora_cfg.get("bias", "none")),
+        modules_to_save=list(lora_cfg.get("modules_to_save", ["classifier", "pooler"])),
+    )
+    return get_peft_model(model, peft_config)
+
+
+def patch_peft_tensor_parallel_compat() -> None:
+    """Patch a PEFT/Transformers resume import mismatch when tensor parallelism is unused."""
+    try:
+        import transformers.integrations.tensor_parallel as tensor_parallel
+    except Exception:
+        return
+    if hasattr(tensor_parallel, "EmbeddingParallel"):
+        return
+
+    class EmbeddingParallel:  # pragma: no cover - only used to satisfy PEFT's optional import.
+        pass
+
+    tensor_parallel.EmbeddingParallel = EmbeddingParallel
+
+
+def configure_training_mode(model: torch.nn.Module, config: dict[str, Any]) -> tuple[torch.nn.Module, str]:
+    """Apply full, linear_probe, or lora trainability settings."""
+    model_cfg = config.get("model", {})
+    mode = str(model_cfg.get("training_mode", "full")).lower()
+    if mode == "full":
+        return model, mode
+    if mode == "linear_probe":
+        return configure_linear_probe(model, model_cfg), mode
+    if mode == "lora":
+        return configure_lora(model, model_cfg), mode
+    raise ValueError(f"Unsupported model.training_mode: {mode}")
+
+
 def load_dataset(dataset_dir: str | Path, smoke_limit: int | None = None) -> DatasetDict:
     """Load a saved DatasetDict and optionally keep a tiny smoke subset."""
     dataset = load_from_disk(str(dataset_dir))
@@ -141,8 +252,9 @@ def save_predictions(
         frame[f"prob_{idx}_{name}"] = probs[:, idx]
     frame["pred_label"] = np.argmax(probs, axis=1)
     frame["splice_site_probability"] = probs[:, 1] + probs[:, 2]
-    frame.to_parquet(output_dir / "test_predictions.parquet", index=False)
-    write_json(metrics, output_dir / "test_metrics.json")
+    if trainer.is_world_process_zero():
+        frame.to_parquet(output_dir / "test_predictions.parquet", index=False)
+        write_json(metrics, output_dir / "test_metrics.json")
     return metrics
 
 
@@ -151,6 +263,7 @@ def train(config: dict[str, Any]) -> dict[str, Any]:
     set_seed(int(config.get("seed", 42)))
     output_dir = ensure_dir(config["output"]["output_dir"])
     log_runtime()
+    reset_cuda_peak_memory()
 
     dataset = load_dataset(config["data"]["dataset_dir"], config.get("smoke", {}).get("max_examples_per_split"))
     model_name = config.get("model", {}).get("name_or_path", "zhihan1996/DNABERT-2-117M")
@@ -169,6 +282,10 @@ def train(config: dict[str, Any]) -> dict[str, Any]:
     )
     if bool(config.get("model", {}).get("disable_triton_flash_attention", True)):
         disable_remote_flash_attention(model)
+    model, training_mode = configure_training_mode(model, config)
+    patch_peft_tensor_parallel_compat()
+    params = parameter_summary(model)
+    logging.info("training_mode=%s parameter_summary=%s", training_mode, params)
 
     args = training_arguments(config, output_dir)
     trainer_kwargs = {
@@ -184,21 +301,36 @@ def train(config: dict[str, Any]) -> dict[str, Any]:
     else:
         trainer_kwargs["tokenizer"] = tokenizer
     trainer = Trainer(**trainer_kwargs)
-    train_result = trainer.train()
+    resume_from_checkpoint = config.get("training", {}).get("resume_from_checkpoint")
+    train_result = trainer.train(resume_from_checkpoint=resume_from_checkpoint)
     final_model_dir = ensure_dir(output_dir / "final_model")
     trainer.save_model(str(final_model_dir))
-    tokenizer.save_pretrained(str(final_model_dir))
-    copy_remote_model_code(model, final_model_dir)
+    if trainer.is_world_process_zero():
+        tokenizer.save_pretrained(str(final_model_dir))
+        copy_remote_model_code(model, final_model_dir)
     trainer.save_state()
 
     valid_metrics = trainer.evaluate(tokenized["valid"])
     test_metrics = save_predictions(trainer, tokenized, dataset, output_dir)
+    run_summary = {
+        "training_mode": training_mode,
+        "parameters": params,
+        "gpu_memory": cuda_memory_summary(),
+        "artifacts": {
+            "final_model_size_bytes": int(directory_size_bytes(final_model_dir)),
+            "checkpoints_size_bytes": int(directory_size_bytes(output_dir / "checkpoints")),
+            "output_dir_size_bytes": int(directory_size_bytes(output_dir)),
+        },
+    }
     payload = {
         "train": {k: float(v) if isinstance(v, (int, float)) else str(v) for k, v in train_result.metrics.items()},
         "valid": {k: float(v) if isinstance(v, (int, float)) else str(v) for k, v in valid_metrics.items()},
         "test": test_metrics,
+        "run": run_summary,
     }
-    write_json(payload, output_dir / "metrics.json")
+    if trainer.is_world_process_zero():
+        write_json(payload, output_dir / "metrics.json")
+        write_json(run_summary, output_dir / "run_summary.json")
     logging.info("Saved model and metrics to %s", output_dir)
     return payload
 
@@ -206,12 +338,19 @@ def train(config: dict[str, Any]) -> dict[str, Any]:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", required=True, help="Path to DNABERT2 training YAML config")
+    parser.add_argument(
+        "--resume_from_checkpoint",
+        default=None,
+        help="Optional Trainer checkpoint directory to resume from without editing the YAML config",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     config = load_config(args.config)
+    if args.resume_from_checkpoint:
+        config.setdefault("training", {})["resume_from_checkpoint"] = args.resume_from_checkpoint
     setup_logging(config.get("logging", {}).get("level", "INFO"))
     train(config)
 
